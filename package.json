@@ -1,6 +1,6 @@
 {
   "private": true,
-  "name": "bubble-card",
+  "name": "bubble-card-y",
   "version": "0.0.0",
   "scripts": {
     "dist": "webpack",
