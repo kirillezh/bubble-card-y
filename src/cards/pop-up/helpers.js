@@ -190,7 +190,7 @@ export function displayContent(context) {
 
 function toggleBackdrop(context, show) {
     const { showBackdrop, hideBackdrop } = getBackdrop(context);
-    show ? showBackdrop(context) : hideBackdrop();
+    show ? showBackdrop() : hideBackdrop();
 }
 
 export function appendPopup(context, append) {
@@ -383,35 +383,33 @@ export function openPopup(context) {
         updatePopupClass(popUp, true);
         displayContent(context);
         toggleBackdrop(context, true);
-        updateListeners(context, true);
 
         // Actions to perform after the main CSS animation is complete
         setTimeout(() => {
+            // Check if the popup wasn't closed before this timeout executed
             if (!popUp.classList.contains('is-popup-opened') || !popupState.activePopups.has(context)) {
                 return;
             }
 
-            // Defer body mutations to the next frame to avoid blocking the animation's last paint
-            requestAnimationFrame(() => {
-                if (!popupState.activePopups.has(context)) return;
-
-                toggleBodyScroll(true);
-
-                if (context.config.auto_close > 0) {
-                    if (context.closeTimeout) clearTimeout(context.closeTimeout);
-                    context.closeTimeout = setTimeout(() => {
-                        if (popupState.activePopups.has(context) && (context.config.hash === location.hash || !context.config.hash)) {
+            toggleBodyScroll(true);
+            updateListeners(context, true);
+            
+            if (context.config.auto_close > 0) {
+                if (context.closeTimeout) clearTimeout(context.closeTimeout); 
+                context.closeTimeout = setTimeout(() => {
+                    // Ensure context is still valid and popup is the one to close or hash matches
+                    if (popupState.activePopups.has(context) && 
+                        (context.config.hash === location.hash || !context.config.hash)) {
                             removeHash();
-                        } else if (popupState.activePopups.has(context)) {
+                    } else if (popupState.activePopups.has(context)) {
                             closePopup(context);
-                        }
-                    }, context.config.auto_close);
-                }
-
-                if (context.config.open_action) {
-                    callAction(context.popUp, context.config, 'open_action');
-                }
-            });
+                    }
+                }, context.config.auto_close);
+            }
+            
+            if (context.config.open_action) {
+                callAction(context.popUp, context.config, 'open_action');
+            }
         }, popupState.animationDuration);
     });
 }
@@ -504,7 +502,9 @@ export function onUrlChange(context) {
                 }, 100);
             }, 100);
 
-            openPopup(context);
+            requestAnimationFrame(() => {
+                openPopup(context);
+            });
         } else {
             requestAnimationFrame(() => {
                 // Close this popup if it's open and hash doesn't match or was removed

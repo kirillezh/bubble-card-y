@@ -3,8 +3,7 @@ import { initializeContent } from './tools/init.js';
 import { cleanupTapActions } from './tools/tap-actions.js';
 import { preloadYAMLStyles } from './modules/registry.js';
 import { createBubbleDefaultColor } from './tools/style.js';
-import { stopTimerInterval } from './tools/utils.js';
-import { cleanupScrollingEffects } from './tools/text-scrolling.js';
+import { cleanupScrollingEffects, stopTimerInterval } from './tools/utils.js';
 import BubbleCardEditor from './editor/bubble-card-editor.js';
 
 import { handlePopUp } from './cards/pop-up/index.js';
@@ -218,15 +217,15 @@ customElements.define("bubble-card", BubbleCard);
 
 window.customCards = window.customCards || [];
 window.customCards.push({
-  type: "bubble-card",
-  name: "Bubble Card",
+  type: "bubble-card-y",
+  name: "Bubble Card (Y' edition)",
   preview: false,
   description: "A minimalist card collection with a nice pop-up touch.",
   documentationURL: "https://github.com/Clooos/Bubble-Card/"
 });
 
 console.info(
-  `%c Bubble Card %c ${version} `,
+  `%c Bubble Card (Y' edition) %c ${version} `,
   'background-color: #555;color: #fff;padding: 3px 2px 3px 3px;border-radius: 14px 0 0 14px;font-family: DejaVu Sans,Verdana,Geneva,sans-serif;text-shadow: 0 1px 0 rgba(1, 1, 1, 0.3)',
   'background-color: #506eac;color: #fff;padding: 3px 3px 3px 2px;border-radius: 0 14px 14px 0;font-family: DejaVu Sans,Verdana,Geneva,sans-serif;text-shadow: 0 1px 0 rgba(1, 1, 1, 0.3)'
 );

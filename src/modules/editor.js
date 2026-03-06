@@ -1,5 +1,5 @@
 import { html } from 'lit';
-import { fireEvent, isHomeAssistantVersionAtLeast } from '../tools/utils.js';
+import { fireEvent } from '../tools/utils.js';
 import { yamlKeysMap, initializeModules } from './registry.js';
 import { getTextFromMap } from './utils.js';
 import { makeModuleStore } from './store.js';
@@ -13,7 +13,7 @@ import { installManualModule } from './install.js';
 import { checkModuleUpdates } from './store.js';
 import { _isModuleInstalledViaYaml } from './store.js';
 import { scrollToModuleForm } from './utils.js';
-import { getLazyLoadedPanelContent, renderDropdown } from '../editor/utils.js';
+import { getLazyLoadedPanelContent } from '../editor/utils.js';
 import { ensureBCTProviderAvailable, isBCTAvailableSync, writeModuleYaml, getAllModulesLastModified } from './bct-provider.js';
 
 // Storage sensor entity ID for Bubble Card modules
@@ -23,7 +23,6 @@ const MODULES_SENSOR_ENTITY_ID = 'sensor.bubble_card_modules';
 const MODULE_TAB_IDS = ['modules', 'store'];
 const BCT_CHECK_RETRY_MS = 5000;
 const FORCE_UNSUPPORTED_STORAGE_KEY = 'bubble-card-force-unsupported-modules';
-const HA_MODULE_EDITOR_LAYOUT_VERSION = '2026.3';
 
 // Function to detect if sl-tab-group is available in the current HA version
 function isSlTabGroupAvailable() {
@@ -287,10 +286,6 @@ export function makeModulesEditor(context) {
   }
 
   const tabGroupId = "bubble-card-module-editor-tab-group";
-  const tabVariant = getTabImplementation();
-  const isHaTabGroupVariant = tabVariant === 'ha-tab-group';
-  const useModernHaTabGroupOffsets = isHaTabGroupVariant &&
-    isHomeAssistantVersionAtLeast(context.hass, HA_MODULE_EDITOR_LAYOUT_VERSION);
 
   // Load modules if they haven't been loaded yet
   if (!context._modulesLoaded) {
@@ -515,6 +510,7 @@ export function makeModulesEditor(context) {
 
   // Handler for tab change event
   const handleTabChange = (e) => {
+    const tabVariant = getTabImplementation();
     let selectedTab;
 
     if (tabVariant === 'sl-tab-group') {
@@ -556,33 +552,12 @@ export function makeModulesEditor(context) {
         return;
       }
       
-      const result = await installManualModule(context, yamlContent);
+      await installManualModule(context, yamlContent);
       
       // Reset the form and close it
       context._showManualImportForm = false;
       context._manualYamlContent = '';
-      
-      if (result && result.moduleId) {
-        context._recentlyToggledModuleId = result.moduleId;
-        
-        setTimeout(() => {
-          context._recentlyToggledModuleId = null;
-          context.requestUpdate();
-        }, 2000);
-      }
-
       context.requestUpdate();
-      
-      if (result && result.moduleId) {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            const modulePanel = context.shadowRoot?.querySelector(`ha-expansion-panel[data-module-id="${result.moduleId}"]`);
-            if (modulePanel) {
-              modulePanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-          });
-        });
-      }
     } catch (error) {
       console.error("Error installing manual module:", error);
     }
@@ -590,6 +565,7 @@ export function makeModulesEditor(context) {
 
   // Render the appropriate tab component based on availability
   const renderTabs = () => {
+    const tabVariant = getTabImplementation();
     const selectedTab = context._selectedModuleTab || 0;
     const selectedPanel = MODULE_TAB_IDS[selectedTab] ?? selectedTab.toString();
 
@@ -603,7 +579,6 @@ export function makeModulesEditor(context) {
     if (tabVariant === 'ha-tab-group') {
       return html`
         <ha-tab-group
-          class="module-tabs module-tabs--ha-tab-group ${useModernHaTabGroupOffsets ? 'module-tabs--ha-tab-group-modern' : ''}"
           id="${tabGroupId}"
           .activePanel=${selectedPanel}
           @wa-tab-show=${handleTabChange}
@@ -635,7 +610,6 @@ export function makeModulesEditor(context) {
     if (tabVariant === 'sl-tab-group') {
       return html`
         <sl-tab-group
-          class="module-tabs module-tabs--sl-tab-group"
           id="${tabGroupId}"
           .selected=${selectedTab.toString()}
           @sl-tab-show=${handleTabChange}
@@ -656,7 +630,6 @@ export function makeModulesEditor(context) {
 
     return html`
       <ha-tabs
-        class="module-tabs module-tabs--ha-tabs"
         .selected=${selectedTab}
         @selected-changed=${handleTabChange}
       >
@@ -678,13 +651,13 @@ export function makeModulesEditor(context) {
         <ha-icon icon="mdi:puzzle"></ha-icon>
         Modules
         ${moduleUpdates.hasUpdates && bctAvailable ? html`
-          <span class="bubble-badge update-badge" style="margin-left: 8px; font-size: 0.8em; vertical-align: middle; z-index: 5;">
+          <span class="bubble-badge update-badge" style="margin-left: 8px; font-size: 0.8em; vertical-align: middle; z-index: 7;">
             <ha-icon icon="mdi:arrow-up-circle-outline"></ha-icon>
             ${moduleUpdates.updateCount} update${moduleUpdates.updateCount > 1 ? 's' : ''} available
           </span>
         ` : ''}
       </h4>
-      <div class="content module-editor-content ${isHaTabGroupVariant ? 'module-editor-content--ha-tab-group' : ''} ${useModernHaTabGroupOffsets ? 'module-editor-content--ha-tab-group-modern' : ''}" style="margin: -8px 4px 14px 4px;">
+      <div class="content" style="margin: -8px 4px 14px 4px;">
         ${!bctAvailable ? html`
             <div class="bubble-info warning">
               <h4 class="bubble-section-title">
@@ -727,7 +700,7 @@ export function makeModulesEditor(context) {
                   ></ha-code-editor>
                 </div>
                 
-                <div class="module-editor-buttons-container">
+                <div style="display: flex; gap: 8px; justify-content: flex-end;">
                   <button 
                     class="icon-button" 
                     style="flex: 1;"
@@ -748,9 +721,12 @@ export function makeModulesEditor(context) {
                     Import Module
                   </button>
                 </div>
+                <hr>
               </div>
             </div>
-          ` : (context._showNewModuleForm || context._editingModule ? 
+          ` : ''}
+
+          ${context._showNewModuleForm || context._editingModule ? 
             renderModuleEditorForm(context) : 
             html`
             <!-- Search and Sort Controls -->
@@ -772,57 +748,53 @@ export function makeModulesEditor(context) {
                   </ha-textfield>
                 </div>
                 <div class="my-modules-sort-menu">
-                  ${renderDropdown({
-                    trigger: html`
-                      <mwc-icon-button slot="trigger" class="icon-button header sort-trigger" title="Sort modules">
-                        <ha-icon icon="mdi:sort"></ha-icon>
-                      </mwc-icon-button>
-                    `,
-                    items: [
-                      { 
-                        type: 'checkbox',
-                        icon: 'mdi:check-circle', 
-                        label: 'Active and recent first',
-                        checked: currentSortOrder === 'default',
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          context._myModulesSortOrder = 'default';
-                          try {
-                            localStorage.setItem('bubble-card-modules-sort-order', 'default');
-                          } catch (err) {}
-                          context.requestUpdate();
-                        }
-                      },
-                      { 
-                        type: 'checkbox',
-                        icon: 'mdi:sort-alphabetical-ascending', 
-                        label: 'Alphabetical',
-                        checked: currentSortOrder === 'alphabetical',
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          context._myModulesSortOrder = 'alphabetical';
-                          try {
-                            localStorage.setItem('bubble-card-modules-sort-order', 'alphabetical');
-                          } catch (err) {}
-                          context.requestUpdate();
-                        }
-                      },
-                      { 
-                        type: 'checkbox',
-                        icon: 'mdi:clock-outline', 
-                        label: 'Recent first',
-                        checked: currentSortOrder === 'recent-first',
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          context._myModulesSortOrder = 'recent-first';
-                          try {
-                            localStorage.setItem('bubble-card-modules-sort-order', 'recent-first');
-                          } catch (err) {}
-                          context.requestUpdate();
-                        }
-                      }
-                    ]
-                  })}
+                  <ha-button-menu corner="BOTTOM_START" menuCorner="START" fixed @closed=${(e) => e.stopPropagation()} @click=${(e) => e.stopPropagation()}>
+                    <mwc-icon-button slot="trigger" class="icon-button header sort-trigger" title="Sort modules">
+                      <ha-icon icon="mdi:sort"></ha-icon>
+                    </mwc-icon-button>
+                    <mwc-list-item 
+                      graphic="icon" 
+                      ?selected=${currentSortOrder === 'default'}
+                      @click=${(e) => {
+                        e.stopPropagation();
+                        context._myModulesSortOrder = 'default';
+                        try {
+                          localStorage.setItem('bubble-card-modules-sort-order', 'default');
+                        } catch (err) {}
+                        context.requestUpdate();
+                      }}>
+                      <ha-icon icon="mdi:check-circle" slot="graphic"></ha-icon>
+                      Active and recent first
+                    </mwc-list-item>
+                    <mwc-list-item 
+                      graphic="icon" 
+                      ?selected=${currentSortOrder === 'alphabetical'}
+                      @click=${(e) => {
+                        e.stopPropagation();
+                        context._myModulesSortOrder = 'alphabetical';
+                        try {
+                          localStorage.setItem('bubble-card-modules-sort-order', 'alphabetical');
+                        } catch (err) {}
+                        context.requestUpdate();
+                      }}>
+                      <ha-icon icon="mdi:sort-alphabetical-ascending" slot="graphic"></ha-icon>
+                      Alphabetical
+                    </mwc-list-item>
+                    <mwc-list-item 
+                      graphic="icon" 
+                      ?selected=${currentSortOrder === 'recent-first'}
+                      @click=${(e) => {
+                        e.stopPropagation();
+                        context._myModulesSortOrder = 'recent-first';
+                        try {
+                          localStorage.setItem('bubble-card-modules-sort-order', 'recent-first');
+                        } catch (err) {}
+                        context.requestUpdate();
+                      }}>
+                      <ha-icon icon="mdi:clock-outline" slot="graphic"></ha-icon>
+                      Recent first
+                    </mwc-list-item>
+                  </ha-button-menu>
                 </div>
               </div>
               <ha-formfield label="Enable unsupported modules">
@@ -1104,7 +1076,7 @@ export function makeModulesEditor(context) {
                 </div>
               </div>
             ` : ''}
-          `)}
+          `}
 
           <hr>
           ${!context._showNewModuleForm && !context._showManualImportForm && !context._editingModule && bctAvailable ? html`
@@ -1172,6 +1144,8 @@ export function makeModulesEditor(context) {
       </div>
     </ha-expansion-panel>
   `;
+
+  const tabVariant = getTabImplementation();
 
   if (tabVariant === 'sl-tab-group') {
     requestAnimationFrame(() => {

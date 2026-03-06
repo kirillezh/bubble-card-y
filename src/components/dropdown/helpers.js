@@ -1,17 +1,3 @@
-import { isHomeAssistantVersionAtLeast } from "../../tools/utils.js";
-
-const NEW_HA_DROPDOWN_MIN_VERSION = '2026.3.0';
-
-// Detect if the new HA frontend is active.
-// Primary signal: Home Assistant version (>= 2026.3.0).
-// Fallback: feature detection only when version is not available yet.
-export function isNewHaFrontend(hass) {
-    if (hass?.config?.version) {
-        return isHomeAssistantVersionAtLeast(hass, NEW_HA_DROPDOWN_MIN_VERSION);
-    }
-    return !!customElements.get('ha-picker-field');
-}
-
 export function getTranslatedAttribute(context, state, attribute, option) {
     function formatString(string) {
       const formattedString = string.replace(/_/g, ' ');

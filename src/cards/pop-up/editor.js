@@ -1,7 +1,7 @@
 import { html } from 'lit';
 import { fireEvent } from '../../tools/utils.js';
+import { makeButtonSliderPanel } from '../../components/slider/editor.js';
 import { renderButtonEditor } from '../button/editor.js';
-import { registerPopUpHash, isHashOnCurrentPage } from './navigation-picker-bridge.js';
 
 function getButtonList() {
     return [
@@ -36,50 +36,6 @@ function findSuitableEntities(hass, entityType = 'light', limit = 2) {
     });
     
     return entities;
-}
-
-function duplicateHashWarningTemplate() {
-    return html`
-        <div id="duplicate-hash-warning" style="display: none;">
-            <div class="bubble-info warning">
-                <h4 class="bubble-section-title">
-                    <ha-icon icon="mdi:alert-outline"></ha-icon>
-                    Duplicate hash
-                </h4>
-                <div class="content">
-                    <p>This hash is already used by another pop-up on this view. Please choose a different one.</p>
-                </div>
-            </div>
-        </div>
-    `;
-}
-
-function getEditorSession(configHash) {
-    const session = window.__bubbleEditorSession;
-    if (session) {
-        if (session.originalHash === configHash) return session;
-        if (session.lastChangedHash === configHash && !session.committed) return session;
-    }
-    window.__bubbleEditorSession = {
-        originalHash: configHash,
-        lastChangedHash: configHash,
-        committed: false
-    };
-    return window.__bubbleEditorSession;
-}
-
-function updateDuplicateHashWarning(editor, originalHash) {
-    const hashInput = editor.shadowRoot?.querySelector('#hash-input');
-    const warning = editor.shadowRoot?.querySelector('#duplicate-hash-warning');
-    if (!hashInput || !warning) return;
-
-    const isDuplicate = isHashOnCurrentPage(hashInput.value, originalHash);
-    warning.style.display = isDuplicate ? '' : 'none';
-
-    const createButton = editor.shadowRoot?.querySelector('.icon-button');
-    if (createButton) {
-        createButton.classList.toggle('disabled', isDuplicate);
-    }
 }
 
 function updateUIForVerticalStack(editor, isInVerticalStack) {
@@ -131,10 +87,6 @@ function createPopUpConfig(editor, originalConfig) {
         
         if (isInVerticalStack) {
             editor._config.hash = hashValue;
-            registerPopUpHash(hashValue, {
-                name: editor._config.name,
-                icon: editor._config.icon
-            });
             fireEvent(editor, "config-changed", { config: editor._config });
             console.info("Pop-up already in a vertical stack. Hash updated. Note that manually creating a vertical stack is no longer required.");
             return;
@@ -196,11 +148,6 @@ function createPopUpConfig(editor, originalConfig) {
             window.bubbleNewlyCreatedHashes = window.bubbleNewlyCreatedHashes || new Set();
             window.bubbleNewlyCreatedHashes.add(hashValue);
         }
-
-        registerPopUpHash(hashValue, {
-            name: editor._config.cards?.[0]?.name,
-            icon: editor._config.cards?.[0]?.icon
-        });
         
         fireEvent(editor, "config-changed", { config: editor._config });
     } catch (error) {
@@ -208,10 +155,6 @@ function createPopUpConfig(editor, originalConfig) {
         // Restore original config if there's an error
         editor._config = originalConfig;
         editor._config.hash = editor.shadowRoot.querySelector('#hash-input')?.value || '#pop-up-name';
-        registerPopUpHash(editor._config.hash, {
-            name: editor._config.name,
-            icon: editor._config.icon
-        });
         fireEvent(editor, "config-changed", { config: editor._config });
     }
 }
@@ -235,7 +178,6 @@ export function renderPopUpEditor(editor) {
         setTimeout(() => {
             isInVerticalStack = window.popUpError === false;
             updateUIForVerticalStack(editor, isInVerticalStack);
-            updateDuplicateHashWarning(editor);
         }, 0);
 
         editor.createPopUpConfig = () => createPopUpConfig(editor, originalConfig);
@@ -258,9 +200,7 @@ export function renderPopUpEditor(editor) {
                     label="Hash (e.g. #kitchen)"
                     .value="${editor._config?.hash || '#pop-up-name'}"
                     id="hash-input"
-                    @input="${() => updateDuplicateHashWarning(editor)}"
                 ></ha-textfield>
-                ${duplicateHashWarningTemplate()}
                 <ha-formfield .label="Include example configuration">
                     <ha-switch
                         aria-label="Include example configuration"
@@ -295,11 +235,6 @@ export function renderPopUpEditor(editor) {
         `;
     }
 
-    // Track the original hash across editor recreations via a window-level session
-    const session = getEditorSession(editor._config?.hash || null);
-
-    setTimeout(() => updateDuplicateHashWarning(editor, session.originalHash), 0);
-
     // Full configuration interface for an existing pop-up
     return html`
         <div class="card-config">
@@ -308,22 +243,8 @@ export function renderPopUpEditor(editor) {
                 label="Hash (e.g. #kitchen)"
                 .value="${editor._config?.hash || '#pop-up-name'}"
                 .configValue="${"hash"}"
-                id="hash-input"
-                @input="${(e) => {
-                    editor._config.hash = e.target.value;
-                    if (window.__bubbleEditorSession) {
-                        window.__bubbleEditorSession.lastChangedHash = e.target.value;
-                    }
-                    updateDuplicateHashWarning(editor, session.originalHash);
-                }}"
-                @change="${(e) => {
-                    if (window.__bubbleEditorSession) {
-                        window.__bubbleEditorSession.committed = true;
-                    }
-                    editor._valueChanged(e);
-                }}"
+                @input="${editor._valueChanged}"
             ></ha-textfield>
-            ${duplicateHashWarningTemplate()}
             <ha-expansion-panel outlined>
                 <h4 slot="header">
                   <ha-icon icon="mdi:dock-top"></ha-icon>

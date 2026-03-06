@@ -5,7 +5,7 @@
     left: 0;
     width: 100%;
     left: -100%;
-    transition: all .5s ease-in-out;
+    transition: all .3s;
     z-index: 0;
     background-color: var(--bubble-accent-color, var(--bubble-default-color));
 }
@@ -140,13 +140,6 @@
 .slider-container.is-touching .bubble-range-slider,
 .bubble-range-slider.is-touching {
     touch-action: none;
-}
-
-html.bubble-slider-dragging,
-body.bubble-slider-dragging {
-    touch-action: none;
-    overscroll-behavior: contain;
-    overflow: hidden;
 }
 
 /* When dragging, disable all touch actions to prevent conflicts */

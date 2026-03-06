@@ -30,124 +30,43 @@ export const navigate = (_node, path, replace = false) => {
     })
 }
 
-function normalizeComparableVersion(version) {
-    if (version === null || version === undefined) return '';
-    const rawVersion = typeof version === 'string' || typeof version === 'number'
-        ? String(version).trim()
-        : '';
-    if (!rawVersion) return '';
-
-    // Keep only numeric chunks so tags like "2026.3.0b2" or "2026.3-dev" are comparable.
-    const parts = rawVersion.match(/\d+/g);
-    return parts ? parts.join('.') : '';
-}
-
-export function compareVersions(v1, v2) {
-    const normalizedV1 = normalizeComparableVersion(v1);
-    const normalizedV2 = normalizeComparableVersion(v2);
-    if (!normalizedV1 || !normalizedV2) return 0;
-
-    const v1Parts = normalizedV1.split('.').map(Number);
-    const v2Parts = normalizedV2.split('.').map(Number);
-    const maxLength = Math.max(v1Parts.length, v2Parts.length);
-
-    for (let i = 0; i < maxLength; i++) {
-        const part1 = v1Parts[i] || 0;
-        const part2 = v2Parts[i] || 0;
-        if (part1 > part2) return 1;
-        if (part1 < part2) return -1;
-    }
-
-    return 0;
-}
-
-export function isHomeAssistantVersionAtLeast(hass, minVersion) {
-    const currentVersion = hass?.config?.version;
-    if (!currentVersion || !minVersion) {
-        return false;
-    }
-    return compareVersions(currentVersion, minVersion) >= 0;
-}
-
 const colorCache = new Map();
 
 // Cache for getComputedStyle to avoid expensive recalculations
 // Cache is invalidated on each animation frame to ensure accuracy
 let cachedDocumentElementStyles = null;
-let cachedBodyStyles = null;
-let stylesCacheFrameId = 0;
 let rafScheduled = false;
 
 function invalidateStyleCache() {
     cachedDocumentElementStyles = null;
-    cachedBodyStyles = null;
-    stylesCacheFrameId++;
     rafScheduled = false;
-}
-
-function ensureStyleCacheValid() {
-    if (!rafScheduled) {
-        requestAnimationFrame(invalidateStyleCache);
-        rafScheduled = true;
-    }
 }
 
 export function getCachedDocumentElementStyles() {
     if (!cachedDocumentElementStyles) {
         cachedDocumentElementStyles = getComputedStyle(document.documentElement);
-        ensureStyleCacheValid();
+        if (!rafScheduled) {
+            requestAnimationFrame(invalidateStyleCache);
+            rafScheduled = true;
+        }
     }
     return cachedDocumentElementStyles;
 }
 
-function getCachedBodyStyles() {
-    if (!cachedBodyStyles) {
-        cachedBodyStyles = getComputedStyle(document.body);
-        ensureStyleCacheValid();
-    }
-    return cachedBodyStyles;
-}
-
-// Cache for resolved CSS variables - cleared each frame
-const cssVariableCache = new Map();
-let cssVariableCacheFrameId = -1;
-
 export function resolveCssVariable(cssVariable) {
-    if (!cssVariable) return '';
-    
-    // Clear cache if frame changed
-    if (cssVariableCacheFrameId !== stylesCacheFrameId) {
-        cssVariableCache.clear();
-        cssVariableCacheFrameId = stylesCacheFrameId;
-    }
-    
-    // Check cache first
-    if (cssVariableCache.has(cssVariable)) {
-        return cssVariableCache.get(cssVariable);
-    }
-    
     let value = cssVariable;
-    
-    // Fast path: if not a CSS variable, return as-is
-    if (!value.startsWith('var(')) {
-        cssVariableCache.set(cssVariable, value);
-        return value;
-    }
-    
-    const bodyStyles = getCachedBodyStyles();
-    let iterations = 0;
-    const maxIterations = 10; // Prevent infinite loops
+    const bodyStyles = getComputedStyle(document.body);
 
-    while (value && value.startsWith('var(') && iterations < maxIterations) {
+    while (value && value.startsWith('var(')) {
         const match = value.match(/var\((--[^,]+),?\s*(.*)?\)/);
         if (!match) break;
         const [, varName, fallback] = match;
         const resolvedValue = bodyStyles.getPropertyValue(varName).trim();
+
         value = resolvedValue || (fallback && fallback.trim()) || '';
-        iterations++;
+
     }
 
-    cssVariableCache.set(cssVariable, value);
     return value;
 }
 
@@ -220,7 +139,7 @@ export function getStateSurfaceColor(context, entity = context.config.entity, us
       const match = resolved.match(/var\((--[^,]+),?\s*(.*)?\)/);
       if (match) {
         const [, varName] = match;
-        const computed = getCachedDocumentElementStyles().getPropertyValue(varName).trim();
+        const computed = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
         if (computed) resolved = computed;
       }
     }
@@ -237,6 +156,7 @@ export function getStateSurfaceColor(context, entity = context.config.entity, us
     
     // Check if sub-button color matches (for slider contrast)
     let shouldApplyDerivation = false;
+    let subButtonRgb = null;
     
     if (subButtonColor) {
       let subButtonResolved = resolveCssVariable(subButtonColor);
@@ -244,11 +164,11 @@ export function getStateSurfaceColor(context, entity = context.config.entity, us
         const match = subButtonResolved.match(/var\((--[^,]+),?\s*(.*)?\)/);
         if (match) {
           const [, varName] = match;
-          const computed = getCachedDocumentElementStyles().getPropertyValue(varName).trim();
+          const computed = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
           if (computed) subButtonResolved = computed;
         }
       }
-      const subButtonRgb = hexToRgb(subButtonResolved) || rgbStringToRgb(subButtonResolved);
+      subButtonRgb = hexToRgb(subButtonResolved) || rgbStringToRgb(subButtonResolved);
       
       if (subButtonRgb && areColorsSimilar(rgb, subButtonRgb)) {
         shouldApplyDerivation = true;
@@ -263,7 +183,7 @@ export function getStateSurfaceColor(context, entity = context.config.entity, us
         const match = cardResolved.match(/var\((--[^,]+),?\s*(.*)?\)/);
         if (match) {
           const [, varName] = match;
-          const computed = getCachedDocumentElementStyles().getPropertyValue(varName).trim();
+          const computed = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
           if (computed) cardResolved = computed;
         }
       }
@@ -435,6 +355,224 @@ export function debounce(func, wait) {
         clearTimeout(timeout);
         timeout = setTimeout(() => func.apply(this, args), wait);
     };
+}
+
+// Shared state and observers for scrolling effect
+const bubbleScrollState = new WeakMap();
+const SCROLL_SPEED = 16; // Pixels per second for scrolling animation
+
+// Force browser reflow to ensure accurate layout measurements after DOM changes
+function forceReflow(element) {
+    void element.offsetWidth;
+}
+
+function getBubbleResizeObserver() {
+    if (!window.bubbleScrollResizeObserver) {
+        window.bubbleScrollResizeObserver = new ResizeObserver((entries) => {
+            entries.forEach((entry) => {
+                const element = entry.target;
+                const state = bubbleScrollState.get(element);
+                if (!state) return;
+
+                if (!element.isConnected) {
+                    try { window.bubbleScrollResizeObserver.unobserve(element); } catch (e) {}
+                    if (window.bubbleScrollObserver) {
+                        try { window.bubbleScrollObserver.unobserve(element); } catch (e) {}
+                    }
+                    bubbleScrollState.delete(element);
+                    return;
+                }
+
+                measureAndApplyScrolling(element, state);
+            });
+        });
+    }
+    return window.bubbleScrollResizeObserver;
+}
+
+function getBubbleIntersectionObserver() {
+    if (!window.bubbleScrollObserver) {
+        window.bubbleScrollObserver = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+                const span = entry.target.querySelector('.scrolling-container span');
+                if (span) {
+                    span.style.animationPlayState = entry.isIntersecting ? 'running' : 'paused';
+                }
+            });
+        }, { threshold: 0.1 });
+    }
+    return window.bubbleScrollObserver;
+}
+
+function calculateAnimationDuration(scrollWidth) {
+    const scrollDistance = Math.max(1, scrollWidth / 2);
+    return Math.max(1, scrollDistance / SCROLL_SPEED);
+}
+
+function measureAndApplyScrolling(element, state) {
+    const text = state.text;
+    if (!text || !element.isConnected) return;
+
+    const availableWidth = element.clientWidth;
+    const isAnimated = element.getAttribute('data-animated') === 'true';
+
+    if (isAnimated) {
+        const span = element.querySelector('.scrolling-container span');
+        if (!span) return;
+
+        forceReflow(span);
+        const baseWidth = Math.max(1, span.scrollWidth / 2);
+        
+        if (baseWidth <= availableWidth) {
+            element.removeAttribute('data-animated');
+            element.innerHTML = text;
+            if (state.observed && window.bubbleScrollObserver) {
+                try { window.bubbleScrollObserver.unobserve(element); } catch (e) {}
+                state.observed = false;
+            }
+            return;
+        }
+
+        const duration = calculateAnimationDuration(span.scrollWidth);
+        span.style.animationDuration = `${duration.toFixed(2)}s`;
+    } else {
+        const baseWidth = element.scrollWidth;
+        if (baseWidth > availableWidth) {
+            const separator = `<span class="bubble-scroll-separator"> | </span>`;
+            const wrappedText = `<span>${text + separator + text + separator}</span>`;
+            element.innerHTML = `<div class="scrolling-container">${wrappedText}</div>`;
+            element.setAttribute('data-animated', 'true');
+            
+            const span = element.querySelector('.scrolling-container span');
+            if (span) {
+                forceReflow(span);
+                if (span.scrollWidth > 0) {
+                    const duration = calculateAnimationDuration(span.scrollWidth);
+                    span.style.animationDuration = `${duration.toFixed(2)}s`;
+                }
+            }
+
+            const io = getBubbleIntersectionObserver();
+            try { io.observe(element); } catch (e) {}
+            state.observed = true;
+        } else if (state.observed && window.bubbleScrollObserver) {
+            try { window.bubbleScrollObserver.unobserve(element); } catch (e) {}
+            state.observed = false;
+        }
+    }
+}
+
+export function applyScrollingEffect(context, element, text) {
+    const { scrolling_effect: scrollingEffect = true } = context.config;
+
+    if (!scrollingEffect) {
+        applyNonScrollingStyle(element, text);
+        // Cleanup observers if present
+        if (window.bubbleScrollResizeObserver) {
+            try { window.bubbleScrollResizeObserver.unobserve(element); } catch (e) {}
+        }
+        if (window.bubbleScrollObserver) {
+            try { window.bubbleScrollObserver.unobserve(element); } catch (e) {}
+        }
+        bubbleScrollState.delete(element);
+        return;
+    }
+
+    const textChanged = element.previousText !== text;
+    const hasState = bubbleScrollState.has(element);
+    
+    // Skip if text hasn't changed and state exists (element was never disconnected)
+    if (!textChanged && hasState) return;
+
+    element.previousText = text;
+    
+    // Detect if element was disconnected and reconnected (state was cleaned up)
+    const wasReconnected = !hasState && element.getAttribute('data-animated') === 'true';
+    
+    // Get or create state
+    let state = bubbleScrollState.get(element);
+    if (state) {
+        state.text = text;
+    } else {
+        state = { text, observed: false };
+        bubbleScrollState.set(element, state);
+    }
+
+    const isAnimated = element.getAttribute('data-animated') === 'true';
+    const existingSpan = element.querySelector('.scrolling-container span');
+    
+    if (isAnimated && existingSpan) {
+        // Update content while animation runs
+        const separator = `<span class="bubble-scroll-separator"> | </span>`;
+        existingSpan.innerHTML = `${text + separator + text + separator}`;
+        
+        // Force reflow to get accurate measurements after DOM change
+        forceReflow(existingSpan);
+        
+        const availableWidth = element.clientWidth;
+        const baseWidth = Math.max(1, existingSpan.scrollWidth / 2);
+        
+        if (baseWidth <= availableWidth) {
+            // Text now fits, disable animation
+            element.removeAttribute('data-animated');
+            element.innerHTML = text;
+            if (state.observed && window.bubbleScrollObserver) {
+                try { window.bubbleScrollObserver.unobserve(element); } catch (e) {}
+                state.observed = false;
+            }
+            return;
+        }
+        
+        // Recalculate animation duration with new text length
+        const duration = calculateAnimationDuration(existingSpan.scrollWidth);
+        existingSpan.style.animationDuration = `${duration.toFixed(2)}s`;
+        
+        // If element was reconnected, restart animation and reconnect observers
+        if (wasReconnected) {
+            // Force animation restart by toggling animation property
+            existingSpan.style.animation = 'none';
+            forceReflow(existingSpan);
+            existingSpan.style.animation = '';
+            existingSpan.style.animationDuration = `${duration.toFixed(2)}s`;
+            existingSpan.style.animationPlayState = 'running';
+            
+            // Reconnect IntersectionObserver to manage play state on visibility
+            const io = getBubbleIntersectionObserver();
+            try { io.observe(element); } catch (e) {}
+            state.observed = true;
+        }
+        
+        // Ensure resize observer remains active
+        const ro = getBubbleResizeObserver();
+        try { ro.observe(element); } catch (e) {}
+        
+        return;
+    }
+
+    // Set plain text first; ResizeObserver will decide to animate
+    element.innerHTML = text;
+    element.style = '';
+    element.removeAttribute('data-animated');
+
+    const ro = getBubbleResizeObserver();
+    try { ro.observe(element); } catch (e) {}
+
+    // Measure immediately to avoid relying solely on observer scheduling
+    measureAndApplyScrolling(element, state);
+}
+
+function applyNonScrollingStyle(element, text) {
+    element.innerHTML = text;
+    element.previousText = text;
+
+    Object.assign(element.style, {
+        whiteSpace: 'normal',
+        display: '-webkit-box',
+        WebkitLineClamp: '2',
+        WebkitBoxOrient: 'vertical',
+        textOverflow: 'ellipsis',
+        overflow: 'hidden'
+    });
 }
 
 export function formatDateTime(datetime, locale) {
@@ -942,21 +1080,20 @@ export function toggleBodyScroll(disable) {
     window.scrollTo({ top: previousScrollY, left: previousScrollX, behavior: 'auto' });
 }
 
-export function formatNumericValue(value, decimals = 0, unit = '', locale = 'en-US') {
-    const num = Number(value);
-    if (Number.isNaN(num)) return '';
-    
-    // Use toLocaleString for proper locale-based formatting
-    const formatted = num.toLocaleString(locale, {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
-        useGrouping: false // Don't add thousands separators
-    });
-    
-    // Add unit with space if provided
-    return unit ? `${formatted} ${unit}` : formatted;
-}
-
-export function getTemperatureUnit(hass) {
-    return hass?.config?.unit_system?.temperature === '°C' ? '°C' : '°F';
+export function cleanupScrollingEffects(root) {
+    try {
+        const elements = root.querySelectorAll('*');
+        elements.forEach((el) => {
+            if (el._bubbleResizeListener) {
+                window.removeEventListener('resize', el._bubbleResizeListener);
+                el._bubbleResizeListener = null;
+                el.eventAdded = false;
+            }
+            if (window.bubbleScrollObserver) {
+                try { window.bubbleScrollObserver.unobserve(el); } catch (e) {}
+            }
+        });
+    } catch (e) {
+        // no-op
+    }
 }

@@ -65,13 +65,6 @@ export function renderCalendarEditor(editor){
                           selector: { boolean: {} },
                         },
                         {
-                          name: 'show_started_events',
-                          label: t('editor.calendar.show_started_events'),
-                          title: t('editor.calendar.show_started_events'),
-                          selector: { boolean: {} },
-                          default: true
-                        },
-                        {
                           name: 'show_place',
                           label: t('editor.calendar.show_place'),
                           title: t('editor.calendar.show_place'),
@@ -83,6 +76,45 @@ export function renderCalendarEditor(editor){
                           title: t('editor.calendar.text_scrolling'),
                           selector: { boolean: {} },
                           default: true
+                        },
+                        {
+                          name: 'show_date_number',
+                          label: t('editor.calendar.show_date_number'),
+                          title: t('editor.calendar.show_date_number'),
+                          selector: { boolean: {} },
+                          default: true
+                        },
+                        {
+                          name: 'no_event_line_color',
+                          label: t('editor.calendar.no_event_line_color'),
+                          title: t('editor.calendar.no_event_line_color'),
+                          selector: { text: {} },
+                        },
+                        {
+                          name: 'merge_consecutive_events',
+                          label: t('editor.calendar.merge_consecutive_events'),
+                          title: t('editor.calendar.merge_consecutive_events'),
+                          selector: { boolean: {} },
+                          default: false
+                        },
+                        {
+                          name: 'footer_text',
+                          label: t('editor.calendar.footer_text'),
+                          title: t('editor.calendar.footer_text'),
+                          selector: { template: {} },
+                        },
+                        {
+                          name: 'no_event_text',
+                          label: t('editor.calendar.no_event_text'),
+                          title: t('editor.calendar.no_event_text'),
+                          selector: { text: {} },
+                        },
+                        {
+                          name: 'auto_height',
+                          label: t('editor.calendar.auto_height'),
+                          title: t('editor.calendar.auto_height'),
+                          selector: { boolean: {} },
+                          default: false
                         }
                       ]}   
                       .computeLabel=${editor._computeLabelCallback}

@@ -1,18 +1,7 @@
-import { getAttribute, isStateOn, isStateRequiringAttention, formatDateTime, createElement, getStateSurfaceColor, getState, isTimerEntity, timerTimeRemaining, computeDisplayTimer, startElementTimerInterval, stopElementTimerInterval, formatNumericValue, getTemperatureUnit } from "../../tools/utils.js";
-import { applyScrollingEffect } from "../../tools/text-scrolling.js";
-import { getIcon, getLightColorSignature, getImage } from "../../tools/icon.js";
+import { getAttribute, isStateOn, isStateRequiringAttention, formatDateTime, createElement, getStateSurfaceColor, getState, isTimerEntity, timerTimeRemaining, computeDisplayTimer, startElementTimerInterval, stopElementTimerInterval, applyScrollingEffect } from "../../tools/utils.js";
+import { getIcon } from "../../tools/icon.js";
 import { addActions, addFeedback } from "../../tools/tap-actions.js";
 import { checkConditionsMet, validateConditionalConfig, ensureArray } from "../../tools/validate-condition.js";
-
-// Get entity picture for sub-button
-// Returns empty if force_icon is set or if an icon is explicitly configured for the sub-button
-// Only checks subButton.icon, not the parent card's icon
-export function getSubButtonImage(context, subButton, entity) {
-  if (subButton.force_icon || subButton.icon) return '';
-  
-  // Use getImage with ignoreConfigIcon=true to skip checking parent card's icon
-  return getImage(context, entity, true);
-}
 
 // Returns a normalized set of options used by all sub-button types
 export function getSubButtonOptions(context, subButton, index) {
@@ -46,7 +35,6 @@ export function getSubButtonOptions(context, subButton, index) {
     // Respect explicit type first; fallback to implicit detection only when no explicit type
     isSelect: resolvedIsSelect,
     icon: getIcon(context, entity, subButton.icon ?? ''),
-    image: getSubButtonImage(context, subButton, entity),
     subButtonType: resolvedSubButtonType,
     alwaysVisible: subButton.always_visible ?? false,
     // Pass the original subButton config for slider overrides
@@ -124,21 +112,18 @@ export function buildDisplayedState(options, context, element = null) {
   if (state && showLastUpdated && state.last_updated !== 'unknown') parts.push(formatDateTime(state.last_updated, context._hass.locale.language));
   if (state && showAttribute) {
     if (attributeType.includes('forecast')) {
+      const isCelcius = context._hass.config.unit_system.temperature === '°C';
       const isMetric = context._hass.config.unit_system.length === 'km';
-      const locale = context._hass?.locale?.language || 'en-US';
 
       if (attributeType.includes('temperature') && attribute !== null && attribute !== undefined) {
         const tempValue = parseFloat(attribute);
-        const unit = getTemperatureUnit(context._hass);
-        const decimals = (tempValue === 0 || tempValue === 0.0) ? 0 : 1;
-        parts.push(formatNumericValue(tempValue, decimals, unit, locale));
+        parts.push((tempValue === 0 || tempValue === 0.0 ? '0' : tempValue.toFixed(1).replace(/\.0$/, '')) + (isCelcius ? ' °C' : ' °F'));
       } else if (attributeType.includes('humidity') && attribute !== null && attribute !== undefined) {
-        parts.push(formatNumericValue(parseFloat(attribute), 0, '%', locale));
+        parts.push(parseFloat(attribute).toFixed(0) + ' %');
       } else if (attributeType.includes('precipitation') && attribute !== null && attribute !== undefined) {
-        parts.push(formatNumericValue(parseFloat(attribute), 1, 'mm', locale));
+        parts.push(parseFloat(attribute).toFixed(1).replace(/\.0$/, '') + ' mm');
       } else if (attributeType.includes('wind_speed') && attribute !== null && attribute !== undefined) {
-        const unit = isMetric ? 'km/h' : 'mph';
-        parts.push(formatNumericValue(parseFloat(attribute), 1, unit, locale));
+        parts.push(parseFloat(attribute).toFixed(1).replace(/\.0$/, '') + (isMetric ? ' km/h' : ' mph'));
       } else if (attribute !== null && attribute !== undefined && attribute !== 'unknown') {
         parts.push(attribute);
       }
@@ -177,73 +162,41 @@ export function updateElementVisibility(element, options, displayedState) {
 }
 
 // Update the background classes and dynamic light background color
-// Uses same optimization pattern as changeIcon: compute new value, compare with current, update only if different
 export function updateBackground(element, options) {
   const { showBackground, isOn, stateBackground, lightBackground, entity, context } = options;
 
   if (!showBackground) {
-    if (element.classList.contains('background-on') || element.classList.contains('background-off')) {
-      element.classList.remove('background-on', 'background-off');
-    }
-    if (element.style.getPropertyValue('--bubble-sub-button-light-background-color')) {
-      element.style.removeProperty('--bubble-sub-button-light-background-color');
-    }
+    element.classList.remove('background-on', 'background-off');
+    element.style.removeProperty('--bubble-sub-button-light-background-color');
     return;
   }
 
-  // Compute new color signature to detect light color changes
-  const currentColorSignature = getLightColorSignature(options.state, entity);
-  const previousColorSignature = element._previousColorSignature;
-  const colorChanged = previousColorSignature !== currentColorSignature;
-  element._previousColorSignature = currentColorSignature;
-
   if (isOn && stateBackground) {
     const requiresAttention = isStateRequiringAttention(context, entity);
-    let newColor;
     
+    // Use error color for states requiring attention (unlocked, error, etc.)
     if (requiresAttention) {
-      newColor = 'var(--red-color, var(--error-color))';
+      element.style.setProperty('--bubble-sub-button-light-background-color', 'var(--red-color, var(--error-color))');
     } else {
+      // Get card background color to check if it matches sub-button color
+      // Only apply derivation if colors are similar
       const cardType = context.config.card_type;
-      const buttonType = context.config.button_type;
+      const cardBackgroundColor = cardType === 'button'
+        ? context.card?.style.getPropertyValue('--bubble-button-background-color')
+        : context.popUp?.style.getPropertyValue('--bubble-button-background-color');
       
-      // For slider cards, use the fill color for contrast instead of card background
-      if (buttonType === 'slider') {
-        // Get the computed background color of the slider fill to handle both custom property and CSS class cases
-        let sliderFillColor = null;
-        if (context.elements?.rangeFill) {
-          try {
-            sliderFillColor = getComputedStyle(context.elements.rangeFill).backgroundColor;
-          } catch (_) {}
-        }
-        newColor = getStateSurfaceColor(context, entity, lightBackground, sliderFillColor, null);
-      } else {
-        const cardBackgroundColor = cardType === 'button'
-          ? context.card?.style.getPropertyValue('--bubble-button-background-color')
-          : context.popUp?.style.getPropertyValue('--bubble-button-background-color');
-        
-        newColor = getStateSurfaceColor(context, entity, lightBackground, cardBackgroundColor || null);
-      }
+      // Apply surface color derivation when state_background is enabled
+      // light_background controls whether to use RGB light color or accent color
+      const surfaceColor = getStateSurfaceColor(context, entity, lightBackground, cardBackgroundColor || null);
+      element.style.setProperty('--bubble-sub-button-light-background-color', surfaceColor);
     }
-
-    // Only update DOM if color changed (like changeIcon pattern)
-    const currentColor = element.style.getPropertyValue('--bubble-sub-button-light-background-color');
-    if (currentColor !== newColor || colorChanged) {
-      element.style.setProperty('--bubble-sub-button-light-background-color', newColor);
-    }
-
-    if (!element.classList.contains('background-on')) {
-      element.classList.add('background-on');
-      element.classList.remove('background-off');
-    }
+    element.classList.add('background-on');
+    element.classList.remove('background-off');
   } else {
-    if (!element.classList.contains('background-off')) {
-      element.classList.add('background-off');
-      element.classList.remove('background-on');
-    }
-    if (element.style.getPropertyValue('--bubble-sub-button-light-background-color')) {
-      element.style.removeProperty('--bubble-sub-button-light-background-color');
-    }
+    element.classList.add('background-off');
+    element.classList.remove('background-on');
+    // Remove the CSS variable when turning off
+    element.style.removeProperty('--bubble-sub-button-light-background-color');
   }
 }
 
@@ -300,7 +253,7 @@ export function setupActions(element, options) {
 }
 
 // Evaluate user-defined visibility conditions
-export function handleVisibilityConditions(element, subButton, hass, context = null) {
+export function handleVisibilityConditions(element, subButton, hass) {
   const conditions = subButton.visibility;
   const ensureVisibleAlwaysSlider = (isVisible) => {
     if (!element?.sliderAlwaysVisible || !element.sliderWrapper) return;
@@ -312,57 +265,6 @@ export function handleVisibilityConditions(element, subButton, hass, context = n
       element.sliderWrapper.setAttribute('aria-hidden', 'true');
     }
   };
-  const closeOpenedSlider = (isVisible) => {
-    // Close slider if visibility becomes false and slider is currently open
-    if (!isVisible && element.sliderOpen && !element.sliderAlwaysVisible && element.sliderWrapper && context) {
-      // Hide the slider wrapper immediately
-      element.sliderWrapper.classList.add('is-hidden');
-      element.sliderOpen = false;
-      
-      // Hide close button overlay
-      if (element.sliderCloseBtn) {
-        element.sliderCloseBtn.classList.add('is-hidden');
-      }
-      
-      // Clean up any group slider state
-      const groupContainer = element._parentGroupContainer;
-      if (groupContainer && groupContainer.classList) {
-        groupContainer.classList.remove('group-slider-open');
-      }
-      
-      // Restore card elements visibility if needed (non-group slider)
-      if (!groupContainer && context.elements) {
-        const setHidden = (el, hidden) => {
-          if (!el) return;
-          el.classList.toggle('is-hidden', hidden);
-        };
-        setHidden(context.elements?.nameContainer, false);
-        setHidden(context.elements?.iconContainer, false);
-        setHidden(context.elements?.image, false);
-        setHidden(context.elements?.buttonsContainer, false);
-        if (context.elements?.subButtonContainer) {
-          context.elements.subButtonContainer.style.opacity = '';
-          context.elements.subButtonContainer.style.pointerEvents = '';
-        }
-      }
-      
-      // Disable global interaction blocker
-      if (element._globalBlockerAdded && element._globalBlockerHandler) {
-        try {
-          (element._globalBlockerEvents || ['pointerdown', 'pointerup', 'click', 'touchstart', 'touchend', 'mousedown', 'mouseup'])
-            .forEach(evt => document.removeEventListener(evt, element._globalBlockerHandler, true));
-        } catch (_) {}
-        try {
-          delete element._globalBlockerHandler;
-          delete element._globalBlockerEvents;
-        } catch (_) {}
-        element._globalBlockerAdded = false;
-      }
-      
-      // Reset pointer down tracking
-      try { element._blockerPointerDownInside = false; } catch (_) {}
-    }
-  };
   if (conditions != null) {
     element._hasVisibilityConditions = true;
     const conditionsArray = ensureArray(conditions);
@@ -372,9 +274,6 @@ export function handleVisibilityConditions(element, subButton, hass, context = n
       if (element._previousVisibilityState === undefined || element._previousVisibilityState !== isVisible) {
         element.classList.toggle('hidden', !isVisible);
         element._previousVisibilityState = isVisible;
-        
-        // Close opened slider if visibility becomes false
-        closeOpenedSlider(isVisible);
       }
       ensureVisibleAlwaysSlider(isVisible);
     } else {
@@ -393,25 +292,7 @@ export function applyWidthStyles(element, subButton, section = 'main', groupCont
     if (!subButton.fill_width && widthVal != null && widthVal !== '') {
       const widthNum = Number(widthVal);
       if (!Number.isNaN(widthNum) && widthNum > 0) {
-        // Check if group has Right/Left/Center alignment (non-fill alignment)
-        let usePx = (section === 'main');
-        if (section === 'bottom' && groupContainer) {
-          // Check if group container has alignment classes for Right/Left/Center
-          const hasNonFillAlignmentClass = groupContainer.classList.contains('alignment-start') ||
-                                           groupContainer.classList.contains('alignment-end') ||
-                                           groupContainer.classList.contains('alignment-center');
-          if (hasNonFillAlignmentClass) {
-            usePx = true;
-          } else {
-            // Fallback: check CSS custom property
-            const justifyContent = groupContainer.style.getPropertyValue('--bubble-sub-button-group-justify-content');
-            if (justifyContent) {
-              const alignment = justifyContent.trim().toLowerCase();
-              usePx = ['start', 'end', 'center'].includes(alignment);
-            }
-          }
-        }
-        const unit = usePx ? 'px' : '%';
+        const unit = (section === 'main') ? 'px' : '%';
         let finalWidth = `${widthNum}${unit}`;
         
         // Adjust width for percentage values in inline groups to account for gap
@@ -487,6 +368,14 @@ export function applyFillWidthClass(element, subButton) {
   element.classList.toggle('fill-width', shouldFill);
 }
 
+// Update icon classes based on displayed state
+export function updateIconClasses(iconElement, displayedState) {
+  if (!iconElement) return;
+  iconElement.classList.remove('hidden');
+  iconElement.classList.add('bubble-sub-button-icon', 'show-icon');
+  iconElement.classList.toggle('icon-with-state', !!displayedState);
+  iconElement.classList.toggle('icon-without-state', !displayedState);
+}
 
 // Handle hide_when_parent_unavailable logic
 export function handleHideWhenParentUnavailable(element, subButton, context) {
@@ -532,8 +421,8 @@ export function ensureNewSubButtonsSchemaObject(config) {
   const raw = config.sub_button;
   if (isNewSubButtonsSchema(raw)) {
     return {
-      main: Array.isArray(raw.main) ? [...raw.main] : [],
-      bottom: Array.isArray(raw.bottom) ? [...raw.bottom] : []
+      main: Array.isArray(raw.main) ? raw.main : [],
+      bottom: Array.isArray(raw.bottom) ? raw.bottom : []
     };
   }
   return convertOldToNewSubButtons(raw || []);

@@ -5,7 +5,6 @@ import {
   isMigrationDone,
   setMigrationDone,
   listFiles,
-  getModuleFileName,
   writeModuleYaml,
   readFile as bctReadFile,
 } from './bct-provider.js';
@@ -148,7 +147,7 @@ export async function migrateIfNeeded(hass) {
       if (!id || typeof id !== 'string') continue;
       try {
         // If a module file already exists, skip writing to avoid overriding user changes
-        const existing = await bctReadFile(hass, getModuleFileName(id));
+        const existing = await bctReadFile(hass, `modules/${id}.yaml`);
         if (existing && typeof existing.content === 'string') continue;
       } catch (e) {
         // proceed to write

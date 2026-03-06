@@ -2,7 +2,7 @@
 import { html } from 'lit';
 import { isReadOnlyEntityId } from '../../slider/helpers.js';
 import { makeGenericSliderSettings } from '../../slider/editor.js';
-import { getLazyLoadedPanelContent, renderDropdown } from '../../../editor/utils.js';
+import { getLazyLoadedPanelContent } from '../../../editor/utils.js';
 import { loadSubButtonClipboard } from './clipboard.js';
 
 export function makeUnifiedSubButtonEditor(editor, button, index, path, updateValueFn, deleteFn, moveFn, copyFn, cutFn, options = {}) {
@@ -51,30 +51,10 @@ export function makeUnifiedSubButtonEditor(editor, button, index, path, updateVa
   const layoutPanelKey = `${panelKeyPrefix}_layout_${index}`;
   const sliderTypePanelKey = `${panelKeyPrefix}_type_slider_${index}`;
 
-  const isSliderWithAlwaysVisible = button.sub_button_type === 'slider' && button.always_visible;
-  const disableActions = (button.sub_button_type === 'select' || (!button.sub_button_type && isSelect)) || isSliderWithAlwaysVisible;
+  const disableActions = (button.sub_button_type === 'select' || (!button.sub_button_type && isSelect)) || button.sub_button_type === 'slider';
 
   const isBottomSection = typeof path === 'string' && path.startsWith('sub_button.bottom');
   const effectiveFillWidth = (button.fill_width == null) ? (isBottomSection ? true : false) : button.fill_width;
-  
-  // Check if button is in a group with Right/Left/Center alignment
-  let hasNonFillAlignment = false;
-  if (typeof path === 'string' && path.includes('.group')) {
-    // Parse path to extract section and group index: sub_button.bottom.0.group or sub_button.main.0.group
-    const pathMatch = path.match(/^sub_button\.(main|bottom)\.(\d+)\.group$/);
-    if (pathMatch) {
-      const [, sectionKey, groupIndex] = pathMatch;
-      const sectionedView = editor._config.sub_button;
-      if (sectionedView && sectionedView[sectionKey]) {
-        const group = sectionedView[sectionKey][parseInt(groupIndex, 10)];
-        if (group && group.justify_content) {
-          const alignment = group.justify_content.toLowerCase();
-          // Check if alignment is Right (end), Left (start), or Center
-          hasNonFillAlignment = ['end', 'start', 'center'].includes(alignment);
-        }
-      }
-    }
-  }
 
   const canMoveLeft = arrayLength !== null ? index > 0 : true;
   const canMoveRight = arrayLength !== null ? index < arrayLength - 1 : true;
@@ -91,50 +71,33 @@ export function makeUnifiedSubButtonEditor(editor, button, index, path, updateVa
         <ha-icon icon="mdi:border-radius"></ha-icon>
         ${buttonTitle}
         <div class="button-container" @click=${(e) => e.stopPropagation()} @mousedown=${(e) => e.stopPropagation()} @touchstart=${(e) => e.stopPropagation()}>
-          ${renderDropdown({
-            trigger: html`
-              <mwc-icon-button slot="trigger" class="icon-button header" title="Options">
-                <ha-icon style="display: flex" icon="mdi:dots-vertical"></ha-icon>
-              </mwc-icon-button>
-            `,
-            items: [
-              { 
-                type: 'item',
-                icon: 'mdi:arrow-left', 
-                label: 'Move left',
-                disabled: !canMoveLeft,
-                onClick: (e) => { e.stopPropagation(); if (canMoveLeft) moveFn(-1); }
-              },
-              { 
-                type: 'item',
-                icon: 'mdi:arrow-right', 
-                label: 'Move right',
-                disabled: !canMoveRight,
-                onClick: (e) => { e.stopPropagation(); if (canMoveRight) moveFn(1); }
-              },
-              { type: 'divider' },
-              { 
-                type: 'item',
-                icon: 'mdi:content-copy', 
-                label: 'Copy',
-                onClick: (e) => { e.stopPropagation(); copyFn(e); }
-              },
-              { 
-                type: 'item',
-                icon: 'mdi:content-cut', 
-                label: 'Cut',
-                onClick: (e) => { e.stopPropagation(); cutFn(e); }
-              },
-              { type: 'divider' },
-              { 
-                type: 'item',
-                icon: 'mdi:delete', 
-                label: 'Delete',
-                variant: 'danger',
-                onClick: (e) => { e.stopPropagation(); deleteFn(e); }
-              }
-            ]
-          })}
+          <ha-button-menu corner="BOTTOM_START" menuCorner="START" fixed @closed=${(e) => e.stopPropagation()} @click=${(e) => e.stopPropagation()}>
+            <mwc-icon-button slot="trigger" class="icon-button header" title="Options">
+              <ha-icon style="display: flex" icon="mdi:dots-vertical"></ha-icon>
+            </mwc-icon-button>
+            <mwc-list-item graphic="icon" ?disabled=${!canMoveLeft} @click=${(e) => { e.stopPropagation(); if (canMoveLeft) moveFn(-1); }}>
+              <ha-icon icon="mdi:arrow-left" slot="graphic"></ha-icon>
+              Move left
+            </mwc-list-item>
+            <mwc-list-item graphic="icon" ?disabled=${!canMoveRight} @click=${(e) => { e.stopPropagation(); if (canMoveRight) moveFn(1); }}>
+              <ha-icon icon="mdi:arrow-right" slot="graphic"></ha-icon>
+              Move right
+            </mwc-list-item>
+            <li divider role="separator"></li>
+            <mwc-list-item graphic="icon" @click=${(e) => { e.stopPropagation(); copyFn(e); }}>
+              <ha-icon icon="mdi:content-copy" slot="graphic"></ha-icon>
+              Copy
+            </mwc-list-item>
+            <mwc-list-item graphic="icon" @click=${(e) => { e.stopPropagation(); cutFn(e); }}>
+              <ha-icon icon="mdi:content-cut" slot="graphic"></ha-icon>
+              Cut
+            </mwc-list-item>
+            <li divider role="separator"></li>
+            <mwc-list-item graphic="icon" class="warning" @click=${(e) => { e.stopPropagation(); deleteFn(e); }}>
+              <ha-icon icon="mdi:delete" slot="graphic"></ha-icon>
+              Delete
+            </mwc-list-item>
+          </ha-button-menu>
         </div>
       </h4>
       <div class="content">
@@ -250,8 +213,7 @@ export function makeUnifiedSubButtonEditor(editor, button, index, path, updateVa
                     computeLabel: editor._computeLabelCallback,
                     onFormChange: (ev) => updateValueFn(ev.detail.value),
                     onToggleChange: (key, value) => updateValueFn({ [key]: value }),
-                    isReadOnly,
-                    forceValuePositionRight: !!(button.always_visible && button.show_button_info)
+                    isReadOnly
                   })}
                 `)}
               </div>
@@ -271,26 +233,11 @@ export function makeUnifiedSubButtonEditor(editor, button, index, path, updateVa
             </h4>
             <div class="content">
               ${getLazyLoadedPanelContent(editor, actionsPanelKey, !!editor._expandedPanelStates[actionsPanelKey], () => html`
-                ${isSliderWithAlwaysVisible ? html`
-                  <div class="bubble-info">
-                    <h4 class="bubble-section-title">
-                      <ha-icon icon="mdi:information-outline"></ha-icon>
-                      Actions disabled
-                    </h4>
-                    <div class="content">
-                      <p>Tap, double tap, and hold actions are disabled on this sub-button because "Always show slider" is enabled.</p>
-                    </div>
-                  </div>
-                ` : ''}
                 <div style="${disableActions ? 'opacity: 0.5; pointer-events: none;' : ''}">
                   ${editor.makeActionPanel("Tap action", button, 'more-info', path, index)}
                 </div>
-                <div style="${disableActions ? 'opacity: 0.5; pointer-events: none;' : ''}">
-                  ${editor.makeActionPanel("Double tap action", button, 'none', path, index)}
-                </div>
-                <div style="${disableActions ? 'opacity: 0.5; pointer-events: none;' : ''}">
-                  ${editor.makeActionPanel("Hold action", button, 'none', path, index)}
-                </div>
+                ${editor.makeActionPanel("Double tap action", button, 'none', path, index)}
+                ${editor.makeActionPanel("Hold action", button, 'none', path, index)}
               `)}
             </div>
           </ha-expansion-panel>
@@ -340,75 +287,61 @@ export function makeUnifiedSubButtonEditor(editor, button, index, path, updateVa
             </h4>
             <div class="content">
               ${getLazyLoadedPanelContent(editor, layoutPanelKey, !!editor._expandedPanelStates[layoutPanelKey], () => html`
-                ${isBottomSection ? html`
-                  <ha-formfield label="Fill available width">
-                    <ha-switch
-                      .checked=${effectiveFillWidth ?? true}
-                      @change=${(ev) => updateValueFn({ fill_width: ev.target.checked })}
-                    ></ha-switch>
-                  </ha-formfield>
-                ` : ''}
-                ${button.sub_button_type === 'slider' ? html`
-                  <ha-formfield label="Always show slider">
-                    <ha-switch
-                      .checked=${button.always_visible ?? false}
-                      @change=${(ev) => updateValueFn({ always_visible: ev.target.checked })}
-                    ></ha-switch>
-                  </ha-formfield>
-                ` : ''}
-                ${button.sub_button_type === 'slider' && button.always_visible ? html`
-                  <ha-formfield label="Show button info (Icon, name, state...)">
-                    <ha-switch
-                      .checked=${button.show_button_info ?? false}
-                      @change=${(ev) => updateValueFn({ show_button_info: ev.target.checked })}
-                    ></ha-switch>
-                  </ha-formfield>
-                ` : ''}
-                <ha-textfield
-                  label="${(isBottomSection && !hasNonFillAlignment) ? 'Custom button width (%)' : 'Custom button width (px)'}"
-                  type="number"
-                  min="${(isBottomSection && !hasNonFillAlignment) ? 0 : (button.sub_button_type === 'slider' && button.always_visible ? 68 : 36)}"
-                  max="${(isBottomSection && !hasNonFillAlignment) ? 100 : 600}"
-                  .value="${button.width ?? ''}"
-                  .disabled=${effectiveFillWidth === true}
-                  @input="${(ev) => {
-                    const value = ev.target.value;
-                    updateValueFn({ width: value === '' ? undefined : Number(value) });
-                  }}"
-                ></ha-textfield>
-                <ha-textfield
-                  label="Custom button height (px)"
-                  type="number"
-                  min="20"
-                  max="600"
-                  .value="${button.custom_height ?? ''}"
-                  @input="${(ev) => {
-                    const value = ev.target.value;
-                    updateValueFn({ custom_height: value === '' ? undefined : Number(value) });
-                  }}"
-                ></ha-textfield>
-                ${button.sub_button_type !== 'slider' || !button.always_visible ? html`
-                  <ha-form
-                    .hass=${editor.hass}
-                    .data=${{ content_layout: button.content_layout ?? 'icon-left' }}
-                    .schema=${[{
-                        name: 'content_layout',
-                        selector: {
-                            select: {
-                                options: [
-                                  { value: 'icon-left', label: 'Icon on left (default)' },
-                                  { value: 'icon-top', label: 'Icon on top' },
-                                  { value: 'icon-bottom', label: 'Icon on bottom' },
-                                  { value: 'icon-right', label: 'Icon on right' }
-                                ],
-                                mode: 'dropdown'
-                            }
+                <ha-form
+                  .hass=${editor.hass}
+                  .data=${{ ...button, ...(isBottomSection ? { fill_width: effectiveFillWidth } : {}) }}
+                  .schema=${[
+                    ...(isBottomSection
+                      ? [{
+                          name: "fill_width",
+                          label: "Fill available width",
+                          selector: { boolean: {} }
+                        }]
+                      : []
+                    ),
+                    ...(button.sub_button_type === 'slider' ? [{
+                      name: "always_visible",
+                      label: "Always show slider",
+                      selector: { boolean: {} }
+                    }] : []),
+                    {
+                      name: "width",
+                      label: isBottomSection ? "Custom button width (%)" : "Custom button width (px)",
+                      selector: { 
+                        number: { 
+                          min: isBottomSection 
+                            ? 0 
+                            : (button.sub_button_type === 'slider' && button.always_visible ? 68 : 36), 
+                          max: isBottomSection ? 100 : 600, 
+                          mode: "box" 
+                        } 
+                      },
+                      disabled: effectiveFillWidth === true
+                    },
+                    {
+                      name: "custom_height",
+                      label: "Custom button height (px)",
+                      selector: { number: { min: 20, max: 600, mode: "box" } }
+                    },
+                    ...(button.sub_button_type !== 'slider' || !button.always_visible ? [{
+                      name: "content_layout",
+                      label: "Content layout",
+                      selector: { 
+                        select: {
+                          options: [
+                            { value: "icon-left", label: "Icon on left (default)" },
+                            { value: "icon-top", label: "Icon on top" },
+                            { value: "icon-bottom", label: "Icon on bottom" },
+                            { value: "icon-right", label: "Icon on right" }
+                          ],
+                          mode: "dropdown"
                         }
-                    }]}
-                    .computeLabel=${() => 'Content layout'}
-                    @value-changed=${(ev) => updateValueFn({ content_layout: ev.detail.value.content_layout })}
-                  ></ha-form>
-                ` : ''}
+                      }
+                    }] : [])
+                  ]}   
+                  .computeLabel=${editor._computeLabelCallback}
+                  @value-changed=${(ev) => updateValueFn(ev.detail.value)}
+                ></ha-form>
               `)}
             </div>
           </ha-expansion-panel>

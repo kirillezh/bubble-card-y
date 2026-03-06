@@ -1,4 +1,5 @@
 import {
+    applyScrollingEffect,
     formatDateTime,
     getState,
     getAttribute,
@@ -11,7 +12,6 @@ import {
     startTimerInterval,
     stopTimerInterval
 } from '../../tools/utils.js';
-import { applyScrollingEffect } from '../../tools/text-scrolling.js';
 import { getIcon, getImage, getIconColor } from '../../tools/icon.js';
 import { getClimateColor } from '../../cards/climate/helpers.js';
 
@@ -156,6 +156,7 @@ export function changeState(context) {
     // Update card class based on state
     const shouldUpdateClass = (
         entity === context.config.entity &&
+        context.config.button_type !== 'state' &&
         // Verify that the state is not a temperature
         !state?.attributes?.unit_of_measurement?.includes('°') &&
         state
@@ -187,12 +188,13 @@ export function changeState(context) {
 }
 
 export function changeIcon(context) {
+    const entityType = isEntityType(context);
     const cardType = context.config.card_type;
     const buttonType = context.config.button_type;
     const isOn = isStateOn(context);
-    const isClimate = isEntityType(context, 'climate');
     const newIcon = getIcon(context);
     const newImage = getImage(context);
+    const useAccentColor = context.config.use_accent_color;
     const currentIconColor = context.elements.iconContainer?.style.color;
     const currentImage = context.elements.image?.style.backgroundImage;
     const currentIcon = context.elements.icon?.icon;
@@ -200,15 +202,15 @@ export function changeIcon(context) {
     const currentImageDisplay = context.elements.image?.style.display;
     const noColor = 
         buttonType === 'name' ||
-        (cardType === 'pop-up' && !buttonType);
+        (cardType === 'pop-up' && !buttonType)
 
     let newIconColor = 'inherit';
 
-    if (isOn && !noColor) {
-        if (isClimate) {
-            newIconColor = getClimateColor(context);
-        } else {
+    if (isOn) {
+        if ((isEntityType(context, "light") && !useAccentColor) || !noColor) {
             newIconColor = `var(--bubble-icon-color, ${getIconColor(context)})`;
+        } else if (entityType === 'climate') {
+            newIconColor = getClimateColor(context);
         }
     }
 

@@ -87,7 +87,7 @@ export function updateSubButtons(context, subButtons) {
       }
 
       updateSubButtonContent(context, element, { ...options, subButton, groupContainer: null, section: 'main' });
-      handleVisibilityConditions(element, subButton, context._hass, context);
+      handleVisibilityConditions(element, subButton, context._hass);
       visibleIndex++;
     });
   }
@@ -182,37 +182,6 @@ export function changeSubButtons(context, subButtons = context.config.sub_button
   updateSubButtons(context, subButtons);
   initializesubButtonIcon(context);
 }
-
-// To fix: Index issue with sub-buttons but use direct element references to avoid cloned icons #2103
-
-// function initializesubButtonIcon(context) {
-//   if (!Array.isArray(context.subButtonIcon)) {
-//     context.subButtonIcon = [];
-//   }
-
-//   const container = context.config.card_type === 'pop-up' ? context.popUp : context.content;
-  
-//   // Main buttons - use direct element references to avoid cloned icons
-//   container.querySelectorAll('.bubble-sub-button:not(.bubble-sub-button-group *)').forEach((subButtonElement) => {
-//     if (subButtonElement.icon) {
-//       context.subButtonIcon.push(subButtonElement.icon);
-//     }
-//   });
-  
-//   // Group buttons - use direct element references to avoid cloned icons
-//   if (context.elements && context.elements.groups) {
-//     Object.values(context.elements.groups).forEach(group => {
-//       if (group.container) {
-//         const groupButtons = group.container.querySelectorAll('.bubble-sub-button');
-//         groupButtons.forEach(subButtonElement => {
-//           if (subButtonElement.icon) {
-//             context.subButtonIcon.push(subButtonElement.icon);
-//           }
-//         });
-//       }
-//     });
-//   }
-// }
 
 function initializesubButtonIcon(context) {
   if (!Array.isArray(context.subButtonIcon)) {
@@ -420,39 +389,9 @@ export function updateGroupButtons(context, sectionedArg) {
         : button;
       const section = isBottomGroup ? 'bottom' : 'main';
       updateSubButtonContent(context, element, { ...options, subButton: subButtonWithAutoWidth, groupContainer, overlayAtCardLevel, section });
-      handleVisibilityConditions(element, button, context._hass, context);
+      handleVisibilityConditions(element, button, context._hass);
     });
-
-    // Hide group if all its sub-buttons are hidden
-    updateGroupVisibility(groupContainer);
 
     syncLaneFillStateForGroup(groupContainer);
   });
-}
-
-// Hide group container if all its visible sub-buttons are hidden
-function updateGroupVisibility(groupContainer) {
-  if (!groupContainer) return;
-  
-  // Get all sub-buttons in the group (excluding sliders and other non-button elements)
-  const subButtons = Array.from(groupContainer.querySelectorAll('.bubble-sub-button'));
-  
-  // Also check for always_visible slider wrappers (their host element is not in DOM)
-  const alwaysVisibleSliders = Array.from(groupContainer.querySelectorAll('.bubble-sub-slider-wrapper.inline'));
-  
-  // Check if all sub-buttons are hidden
-  const allSubButtonsHidden = subButtons.length === 0 || subButtons.every(btn => {
-    return btn.classList.contains('hidden') || btn.style.display === 'none';
-  });
-  
-  // Check if any always_visible slider wrapper is visible
-  const hasVisibleAlwaysSlider = alwaysVisibleSliders.some(wrapper => {
-    return wrapper.style.display !== 'none' && !wrapper.classList.contains('hidden');
-  });
-  
-  // Group is hidden only if all sub-buttons are hidden AND no always_visible slider is visible
-  const shouldHide = allSubButtonsHidden && !hasVisibleAlwaysSlider;
-  
-  // Toggle hidden class on the group container
-  groupContainer.classList.toggle('hidden', shouldHide);
 }

@@ -11,21 +11,6 @@ import { getIconColor } from '../../tools/icon.js';
 import { updateSlider } from '../../components/slider/changes.js';
 import { handleCustomStyles } from '../../tools/style-processor.js';
 
-// Track color change timing per context to optimize Safari transitions
-const colorChangeTimers = new WeakMap();
-
-function applyColorChange(context, newButtonColor, newOpacity, cardType) {
-  const background = context.elements?.background;
-  if (!background) return;
-  
-  const target = cardType === 'button' ? context.card : context.popUp;
-  if (!target) return;
-  
-  // Apply the color change
-  target.style.setProperty('--bubble-button-background-color', newButtonColor);
-  background.style.opacity = newOpacity;
-}
-
 export function changeButton(context) {
   const cardType = context.config.card_type;
   const buttonType = getButtonType(context);
@@ -37,7 +22,7 @@ export function changeButton(context) {
   const currentButtonColor = cardType === 'button'
       ? context.card.style.getPropertyValue('--bubble-button-background-color')
       : context.popUp.style.getPropertyValue('--bubble-button-background-color');
-  const currentOpacity = context.elements.background?.style.opacity;
+  const currentOpacity = context.elements.background.style.opacity;
 
   let newButtonColor = '';
   let newOpacity = '';
@@ -65,9 +50,16 @@ export function changeButton(context) {
     updateSlider(context);
   }
 
-  // Only update if color or opacity changed
-  if (currentButtonColor !== newButtonColor || currentOpacity !== newOpacity) {
-    applyColorChange(context, newButtonColor, newOpacity, cardType);
+  if (currentButtonColor !== newButtonColor) {
+    if (cardType === 'button') {
+      context.card.style.setProperty('--bubble-button-background-color', newButtonColor);
+    } else if (cardType === 'pop-up') {
+      context.popUp.style.setProperty('--bubble-button-background-color', newButtonColor);
+    }
+  }
+
+  if (currentOpacity !== newOpacity) {
+    context.elements.background.style.opacity = newOpacity;
   }
 }
 

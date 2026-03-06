@@ -1,7 +1,6 @@
 import { changeDropdownList } from "../../../dropdown/changes.js";
-import { getOptionIcon, getSelectedAttribute } from "../../../dropdown/helpers.js";
-import { updateSubButtonIconOrImage } from "../../../../tools/icon.js";
-import { buildDisplayedState, updateBackground, setupActions, updateElementVisibility, applySubButtonScrollingEffect } from "../../utils.js";
+import { getOptionIcon } from "../../../dropdown/helpers.js";
+import { buildDisplayedState, updateBackground, setupActions, updateElementVisibility, updateIconClasses, applySubButtonScrollingEffect } from "../../utils.js";
 
 function updateDropdownArrow(element, showArrow) {
   // Keep default padding so icon-only dropdown buttons match regular sub-button sizing
@@ -16,81 +15,17 @@ function updateDropdownArrow(element, showArrow) {
   }
 }
 
-function syncSelectValue(context, element, entity, subButton) {
-  const currentEntity = context._hass.states[entity];
-  const selectAttribute = subButton?.select_attribute;
-  const currentValue = currentEntity && selectAttribute
-    ? getSelectedAttribute(currentEntity, selectAttribute)
-    : currentEntity?.state;
-  const previousValue = context.previousValues[entity]?.selectedValue;
+function syncSelectValue(context, element, entity) {
+  const currentState = context._hass.states[entity]?.state;
+  const previousState = context.previousValues[entity]?.state;
 
-  if (currentValue !== previousValue) {
-    if (currentValue && element.dropdownSelect && element.dropdownSelect.value !== currentValue) {
-      element.dropdownSelect.value = currentValue;
+  if (currentState !== previousState) {
+    if (currentState && element.dropdownSelect && element.dropdownSelect.value !== currentState) {
+      element.dropdownSelect.value = currentState;
       element.dropdownSelect.dispatchEvent(new Event("change", { bubbles: true }));
     }
-    context.previousValues[entity] = { selectedValue: currentValue };
+    context.previousValues[entity] = { state: currentState };
   }
-}
-
-function getResolvedSelectedOption(options) {
-  if (!options.isSelect || !options.state) return false;
-
-  const selectedOption = getSelectedAttribute(options.state, options.subButton.select_attribute);
-  return selectedOption ?? false;
-}
-
-function clearTransientAttributeIconOverrides(iconElement) {
-  if (iconElement.tagName !== 'HA-ATTRIBUTE-ICON') return;
-
-  if (iconElement.getAttribute?.('icon') != null) {
-    iconElement.removeAttribute('icon');
-  }
-
-  if (typeof iconElement.icon !== 'undefined') {
-    try {
-      iconElement.icon = '';
-    } catch (_) {}
-  }
-
-  if (iconElement.style?.color) {
-    iconElement.style.color = '';
-  }
-}
-
-function syncDynamicOptionIcon(element, iconElement, optionIcon, fallbackIcon) {
-  const isAttributeIcon = iconElement.tagName === 'HA-ATTRIBUTE-ICON' && optionIcon.tagName === 'HA-ATTRIBUTE-ICON';
-
-  if (isAttributeIcon) {
-    const iconChanged =
-      iconElement.attribute !== optionIcon.attribute ||
-      iconElement.attributeValue !== optionIcon.attributeValue;
-
-    if (iconChanged) {
-      iconElement.attribute = optionIcon.attribute;
-      iconElement.attributeValue = optionIcon.attributeValue;
-      iconElement.hass = optionIcon.hass;
-      iconElement.stateObj = optionIcon.stateObj;
-    }
-    clearTransientAttributeIconOverrides(iconElement);
-    return iconElement;
-  }
-
-  const currentIcon = iconElement.icon ?? iconElement.getAttribute?.('icon');
-  const nextIcon = optionIcon.icon ?? optionIcon.getAttribute?.('icon');
-  const isIconDifferent = iconElement.tagName !== optionIcon.tagName || currentIcon !== nextIcon;
-
-  if (isIconDifferent) {
-    element.replaceChild(optionIcon, iconElement);
-    element.icon = optionIcon;
-    return optionIcon;
-  }
-
-  if (fallbackIcon && currentIcon !== fallbackIcon) {
-    iconElement.setAttribute('icon', fallbackIcon);
-  }
-
-  return iconElement;
 }
 
 export function handleDropdownSubButton(context, element, options) {
@@ -98,17 +33,14 @@ export function handleDropdownSubButton(context, element, options) {
 
   // Dropdown mounts are handled at creation time; update state, list and arrow here
   if (isSelect && element.dropdownSelect) {
-    syncSelectValue(context, element, entity, subButton);
+    syncSelectValue(context, element, entity);
     changeDropdownList(context, element, entity, subButton);
     updateDropdownArrow(element, showArrow);
   }
 
   const displayedState = buildDisplayedState(options, context, element);
   
-  // Always update background (it handles its own optimization like changeIcon)
-  updateBackground(element, options);
-  
-  // Check if displayed state has changed to avoid unnecessary DOM updates for other elements
+  // Check if displayed state has changed to avoid unnecessary DOM updates
   const previousDisplayedState = element._previousDisplayedState;
   const previousState = element._previousState;
   const currentState = options.state?.state;
@@ -119,8 +51,9 @@ export function handleDropdownSubButton(context, element, options) {
   element._previousDisplayedState = displayedState;
   element._previousState = currentState;
   
-  // Only update other DOM elements if state changed or first update
+  // Only update DOM if displayed state changed, entity state changed, or if this is the first update
   if (displayedStateChanged || entityStateChanged || previousDisplayedState === undefined) {
+    updateBackground(element, options);
     setupActions(element, options);
     updateElementVisibility(element, options, displayedState);
     if (element.nameContainer) {
@@ -128,8 +61,10 @@ export function handleDropdownSubButton(context, element, options) {
     }
   }
 
-  // Track selected option for dropdown-specific icon logic
-  const selectedOption = getResolvedSelectedOption(options);
+  // Icon logic with optimization to avoid overwriting external changes (e.g., custom modules)
+  const selectedOption = isSelect && element.dropdownSelect
+    ? Array.from(element.dropdownSelect.children).find(option => option.hasAttribute('selected'))?.value
+    : false;
 
   // Track if selection or config changed to decide if we need to update the icon
   const prevSelected = element._prevSelectedOption;
@@ -141,29 +76,48 @@ export function handleDropdownSubButton(context, element, options) {
   element._prevSelectedOption = selectedOption;
   element._prevConfigIcon = options.icon;
 
-  // Handle entity picture and icon display using unified function
-  // with dropdown-specific icon update callback
-  updateSubButtonIconOrImage(element, options, displayedState, {
-    beforeIconUpdate: (iconElement, opts) => {
-      // Only update icon if selection or config changed, to preserve external modifications
-      if (selectionChanged || configIconChanged || prevSelected === undefined) {
-        if (selectedOption) {
-          const optionIcon = getOptionIcon(context, opts.state, opts.subButton.select_attribute, selectedOption);
-          if (optionIcon && !opts.subButton.icon) {
-            return syncDynamicOptionIcon(element, iconElement, optionIcon, opts.icon);
-          } else if (iconElement.icon !== opts.icon) {
-            iconElement.setAttribute('icon', opts.icon);
-          }
-        } else if (iconElement.icon !== opts.icon) {
-          iconElement.setAttribute('icon', opts.icon);
-        }
-      }
-      return iconElement; // Return current element to indicate it was handled
+  if (options.showIcon && options.icon) {
+    let iconElement = element.icon;
+    if (!iconElement) {
+      iconElement = document.createElement('ha-icon');
+      iconElement.classList.add('bubble-sub-button-icon');
+      iconElement.classList.add('show-icon');
+      element.appendChild(iconElement);
+      element.icon = iconElement;
     }
-  });
+
+    // Only update icon if selection or config changed, to preserve external modifications
+    if (selectionChanged || configIconChanged || prevSelected === undefined) {
+      if (selectedOption) {
+        const optionIcon = getOptionIcon(context, options.state, options.subButton.select_attribute, selectedOption);
+        if (optionIcon && !options.subButton.icon) {
+          const isIconDifferent = iconElement.tagName !== optionIcon.tagName || 
+            iconElement.icon !== optionIcon.icon || 
+            iconElement.getAttribute?.('attribute') !== optionIcon.getAttribute?.('attribute') ||
+            iconElement.getAttribute?.('attributeValue') !== optionIcon.getAttribute?.('attributeValue');
+          if (isIconDifferent) {
+            element.replaceChild(optionIcon, iconElement);
+            element.icon = optionIcon;
+            iconElement = optionIcon;
+          }
+        } else if (iconElement.icon !== options.icon) {
+          iconElement.setAttribute('icon', options.icon);
+        }
+      } else if (iconElement.icon !== options.icon) {
+        iconElement.setAttribute('icon', options.icon);
+      }
+    }
+
+    iconElement.classList.remove('hidden');
+    iconElement.classList.add('bubble-sub-button-icon', 'show-icon');
+    updateIconClasses(iconElement, displayedState);
+  } else if (element.icon) {
+    element.icon.classList.remove('show-icon');
+    element.icon.classList.add('hidden');
+  }
 
   // Sync icon attribute if needed (for ha-icon elements)
-  if (element.icon?.tagName === 'HA-ICON' && element.icon.getAttribute('icon') !== element.icon.icon) {
+  if (element.icon?.getAttribute('icon') !== element.icon?.icon) {
     element.icon.setAttribute('icon', element.icon.icon);
   }
 }

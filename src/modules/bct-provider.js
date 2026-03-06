@@ -5,7 +5,6 @@ import jsyaml from 'js-yaml';
 const ERROR_RETRY_DELAY_MS = 5000;
 const UNAVAILABLE_RETRY_DELAY_MS = 30000;
 const CACHE_VALIDITY_MS = 60000; // Cache remains valid for 1 minute even if hass becomes null
-const MODULE_FILE_BASENAME_FALLBACK = 'module';
 
 // Simple in-memory cache for availability and module listings
 const availabilityCache = {
@@ -238,39 +237,6 @@ export async function isMigrationDone(hass) {
   return !!(cfg && cfg.migration && cfg.migration.done === true);
 }
 
-function hashModuleId(value) {
-  const str = String(value ?? '');
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash).toString(36);
-}
-
-function normalizeModuleFileBase(moduleId) {
-  const raw = String(moduleId ?? '');
-  const strippedAccents = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const safe = strippedAccents
-    .replace(/[^A-Za-z0-9_-]+/g, '-')
-    .replace(/-{2,}/g, '-')
-    .replace(/^[-_]+|[-_]+$/g, '');
-  return safe || MODULE_FILE_BASENAME_FALLBACK;
-}
-
-function isModuleIdFileSafe(moduleId) {
-  return /^[A-Za-z0-9_-]+$/.test(String(moduleId ?? ''));
-}
-
-export function getModuleFileName(moduleId) {
-  const raw = String(moduleId ?? '');
-  const base = normalizeModuleFileBase(raw);
-  if (isModuleIdFileSafe(raw) && raw === base) {
-    return `modules/${raw}.yaml`;
-  }
-  const suffix = hashModuleId(raw);
-  return `modules/${base}--${suffix}.yaml`;
-}
-
 // Modules IO using files
 function normalizeModuleFromParsed(id, obj) {
   if (!obj || typeof obj !== 'object') return null;
@@ -399,7 +365,7 @@ export async function writeModuleYaml(hass, moduleId, moduleObjectOrYaml) {
       noCompatMode: true,
     });
   }
-  const name = getModuleFileName(moduleId);
+  const name = `modules/${moduleId}.yaml`;
   const result = await writeFile(hass, name, content);
   if (!result || result.status !== 'error') {
     await refreshCacheAfterMutation(hass);
@@ -408,7 +374,7 @@ export async function writeModuleYaml(hass, moduleId, moduleObjectOrYaml) {
 }
 
 export async function deleteModuleFile(hass, moduleId) {
-  const name = getModuleFileName(moduleId);
+  const name = `modules/${moduleId}.yaml`;
   const result = await deleteFile(hass, name);
   if (!result || result.status !== 'error') {
     await refreshCacheAfterMutation(hass);
@@ -468,23 +434,12 @@ export function getModuleLastModified(moduleId) {
   try {
     const cache = loadBCTCache();
     if (!cache || !cache.files) return null;
-
-    const fileName = getModuleFileName(moduleId);
+    
+    const fileName = `modules/${moduleId}.yaml`;
     const fileData = cache.files[fileName];
-    if (fileData && fileData.updated_at) return fileData.updated_at;
-
-    // Fallback for legacy naming scheme cached before normalization.
-    const legacyFileData = cache.files[`modules/${moduleId}.yaml`];
-    if (legacyFileData && legacyFileData.updated_at) return legacyFileData.updated_at;
-
-    // Last fallback: search by parsed module ids in cache entries.
-    for (const key of Object.keys(cache.files)) {
-      const entry = cache.files[key];
-      if (entry?.updated_at && entry?.modules && entry.modules[moduleId]) {
-        return entry.updated_at;
-      }
-    }
-    return null;
+    if (!fileData || !fileData.updated_at) return null;
+    
+    return fileData.updated_at;
   } catch (_) {
     return null;
   }
@@ -494,19 +449,18 @@ export function getAllModulesLastModified() {
   try {
     const cache = loadBCTCache();
     if (!cache || !cache.files) return new Map();
-
+    
     const timestamps = new Map();
     Object.keys(cache.files).forEach((fileName) => {
-      const fileData = cache.files[fileName];
-      if (!fileData || !fileData.updated_at) return;
-      const moduleIds = Object.keys(fileData.modules || {});
-      if (moduleIds.length > 0) {
-        moduleIds.forEach((moduleId) => {
+      if (fileName.startsWith('modules/') && fileName.endsWith('.yaml')) {
+        const moduleId = fileName.replace('modules/', '').replace('.yaml', '');
+        const fileData = cache.files[fileName];
+        if (fileData && fileData.updated_at) {
           timestamps.set(moduleId, fileData.updated_at);
-        });
+        }
       }
     });
-
+    
     return timestamps;
   } catch (_) {
     return new Map();

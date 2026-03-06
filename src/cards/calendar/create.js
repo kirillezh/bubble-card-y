@@ -16,7 +16,10 @@ export function createStructure(context) {
 
   elements.calendarCardContent = createElement('div', 'bubble-calendar-content');
 
+  // Only set fixed height if auto_height is not enabled
+  if (context.config.auto_height !== true) {
   elements.mainContainer.style.setProperty('--bubble-calendar-height', `${(context.config.rows ?? 1) * 56}px`);
+  }
   elements.mainContainer.prepend(elements.calendarCardContent);
 
   context.cardType = cardType;

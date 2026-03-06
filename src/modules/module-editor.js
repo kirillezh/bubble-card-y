@@ -17,21 +17,15 @@ import { scrollToModuleForm } from './utils.js';
 function updateModuleInConfig(context, moduleId, oldId = null) {
   if (!context._config || !context._config.modules) return;
   
-  // Create a new array to avoid extensibility issues
-  let modules = [...context._config.modules];
-  
   // Remove old ID if needed
   if (oldId && oldId !== moduleId) {
-    modules = modules.filter(id => id !== oldId);
+    context._config.modules = context._config.modules.filter(id => id !== oldId);
   }
   
   // Add new ID if not already present
-  if (!modules.includes(moduleId)) {
-    modules = [...modules, moduleId];
+  if (!context._config.modules.includes(moduleId)) {
+    context._config.modules.push(moduleId);
   }
-  
-  // Update the config with the new array
-  context._config.modules = modules;
   
   // Save current ID for tracking
   context._previousModuleId = moduleId;
@@ -60,31 +54,13 @@ function broadcastModuleUpdate(moduleId, moduleData) {
 
 function setHAEditorButtonsDisabled(disabled) {
   try {
-    // Target only the primary action (Save) in the HA dialog footer.
-    // Avoid brittle positional selectors that can hide dialog content
-    // when Home Assistant changes header/action slots.
-    const dialogRoot = document.querySelector("home-assistant")
+    // Path to the HA editor save button
+    const saveButton = document.querySelector("body > home-assistant")
       ?.shadowRoot?.querySelector("hui-dialog-edit-card")
-      ?.shadowRoot;
-
-    if (!dialogRoot) {
-      return;
-    }
-
-    const saveButtons = dialogRoot.querySelectorAll("ha-dialog-footer [slot='primaryAction']");
-    if (saveButtons.length > 0) {
-      saveButtons.forEach((button) => {
-        if ("disabled" in button) {
-          button.disabled = disabled;
-        }
-      });
-      return;
-    }
-
-    // Legacy fallback for older dialog structures.
-    const legacyActionsContainer = dialogRoot.querySelector("ha-dialog > div:nth-child(4)");
-    if (legacyActionsContainer) {
-      legacyActionsContainer.style.display = disabled ? 'none' : '';
+      ?.shadowRoot?.querySelector("ha-dialog > div:nth-child(4)");
+    
+    if (saveButton) {
+      saveButton.style.display = disabled ? 'none' : '';
     }
   } catch (error) {
     //console.error("Error accessing HA editor save button:", error);

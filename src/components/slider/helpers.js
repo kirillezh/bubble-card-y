@@ -1,9 +1,7 @@
 import { 
   getAttribute,
   getState,
-  isStateOn,
-  formatNumericValue,
-  getTemperatureUnit
+  isStateOn
 } from '../../tools/utils.js';
 
 const FILL_ORIENTATION_VALUES = ['left', 'right', 'top', 'bottom'];
@@ -206,20 +204,12 @@ export function getCurrentPercentage(context, entity = context.config.entity) {
       }
 
       if (lightSliderType === 'white_temp') {
-        const colorTempKelvin = parseFloat(getAttribute(context, 'color_temp_kelvin', entity));
-        const minKelvinRaw = parseFloat(getAttribute(context, 'min_color_temp_kelvin', entity));
-        const maxKelvinRaw = parseFloat(getAttribute(context, 'max_color_temp_kelvin', entity));
-        const minKelvin = Number.isFinite(minKelvinRaw) ? minKelvinRaw : 2000;
-        const maxKelvin = Number.isFinite(maxKelvinRaw) ? maxKelvinRaw : 6500;
-        if (!Number.isFinite(colorTempKelvin)) return 0;
-
-        const lowerKelvin = Math.min(minKelvin, maxKelvin);
-        const upperKelvin = Math.max(minKelvin, maxKelvin);
-        const range = upperKelvin - lowerKelvin;
-        if (range <= 0) return 0;
-
-        const value = clamp(colorTempKelvin, lowerKelvin, upperKelvin);
-        return clampPercentage(((upperKelvin - value) / range) * 100);
+        const colorTempMireds = parseFloat(getAttribute(context, 'color_temp', entity));
+        const minMireds = parseFloat(getAttribute(context, 'min_mireds', entity)) || 153;
+        const maxMireds = parseFloat(getAttribute(context, 'max_mireds', entity)) || 500;
+        if (!isFinite(colorTempMireds)) return 0;
+        const value = clamp(colorTempMireds, Math.min(minMireds, maxMireds), Math.max(minMireds, maxMireds));
+        return calculateRangePercentage(value, minMireds, maxMireds);
       }
 
       // Default: brightness
@@ -384,36 +374,52 @@ export function formatDisplayValueFromEntity(context) {
 
 // Helper function to format a value with proper units and precision
 function formatValue(context, value, entityType, entityId, hass) {
-  const locale = hass?.locale?.language || 'en-US';
-  const format = (val, decimals, unit) => formatNumericValue(val, decimals, unit, locale);
-  
   switch (entityType) {
     case 'climate': {
       if (!isStateOn(context, entityId)) {
         return hass?.localize?.('state.default.off') || '0%';
       }
-      const unit = getTemperatureUnit(hass);
-      const decimals = Number.isInteger(value) ? 0 : 1;
-      return format(value, decimals, unit);
+      const isCelcius = hass?.config?.unit_system?.temperature === '°C';
+      const formatted = value.toFixed(1).replace(/\.0$/, '');
+      return `${formatted}${isCelcius ? '°C' : '°F'}`;
     }
     case 'input_number':
     case 'number': {
       const unit = getAttribute(context, 'unit_of_measurement', entityId) || '';
       const precision = hass?.states?.[entityId]?.attributes?.precision ?? (Number.isInteger(value) ? 0 : 1);
-      return format(value, precision, unit);
+      const formatted = value.toFixed(precision).replace(/\.0$/, '');
+      return unit ? `${formatted} ${unit}` : formatted;
     }
-    case 'light':
-    case 'media_player':
-    case 'cover':
-    case 'fan':
-      return format(Math.round(value), 0, '%');
+    case 'light': {
+      // For lights, display brightness percentage
+      const rounded = Math.round(value);
+      return `${rounded}%`;
+    }
+    case 'media_player': {
+      // For media players, display volume percentage
+      const rounded = Math.round(value);
+      return `${rounded}%`;
+    }
+    case 'cover': {
+      // For covers, display position percentage
+      const rounded = Math.round(value);
+      return `${rounded}%`;
+    }
+    case 'fan': {
+      // For fans, display percentage
+      const rounded = Math.round(value);
+      return `${rounded}%`;
+    }
     default: {
+      // For other types, check if there's a unit of measurement
       const unit = getAttribute(context, 'unit_of_measurement', entityId) || '';
       if (unit) {
         const precision = hass?.states?.[entityId]?.attributes?.precision ?? (Number.isInteger(value) ? 0 : 1);
-        return format(value, precision, unit);
+        const formatted = value.toFixed(precision).replace(/\.0$/, '');
+        return `${formatted} ${unit}`;
       }
-      return format(Math.round(value), 0, '%');
+      const rounded = Math.round(value);
+      return `${rounded}%`;
     }
   }
 }
